@@ -1,0 +1,182 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum StaffRole {
+  MANAGER
+  SERVER
+  KITCHEN
+}
+
+enum OrderStatus {
+  SEATED
+  PREPARING
+  SERVED
+  PAYMENT_PENDING
+  PAYMENT_FULFILLED
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEOUT
+}
+
+model Staff {
+  id        Int       @id @default(autoincrement())
+  name      String
+  role      StaffRole
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  ordersSeated Order[]          @relation("OrderServer")
+  statusLogs   OrderStatusLog[] @relation("StatusChangedBy")
+}
+
+model Table {
+  id         Int      @id @default(autoincrement())
+  number     Int      @unique
+  capacity   Int
+  isOccupied Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  orders Order[]
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  color     String   @default("#64748b")
+  createdAt DateTime @default(now())
+
+  menuItems  MenuItem[]
+  comboSlots ComboSlot[]
+}
+
+model MenuItem {
+  id         Int      @id @default(autoincrement())
+  name       String
+  price      Int
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  orderItems OrderItem[]
+
+  @@index([categoryId])
+}
+
+// A combo bundles a fixed set of category "slots" (e.g. 1 Main Course +
+// 1 Beverage) at a discounted price. Which specific item fills each slot
+// is chosen when the combo is added to an order. The price itself is not
+// stored — it's computed from the average price of active items in each
+// slot's category, minus discountPercent, so it always tracks current menu
+// prices (see lib/comboPricing.ts).
+model Combo {
+  id              Int      @id @default(autoincrement())
+  name            String
+  discountPercent Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  slots       ComboSlot[]
+  orderCombos OrderCombo[]
+}
+
+model ComboSlot {
+  id         Int      @id @default(autoincrement())
+  comboId    Int
+  combo      Combo    @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
+  sortOrder  Int      @default(0)
+
+  @@index([comboId])
+}
+
+// One instance of a combo placed on an order — the "panel" that groups its
+// component OrderItem rows together for display and kitchen tracking.
+model OrderCombo {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  comboId   Int
+  combo     Combo    @relation(fields: [comboId], references: [id])
+  nameSnap  String
+  priceSnap Int
+  isTakeout Boolean  @default(false)
+  round     Int      @default(1)
+  createdAt DateTime @default(now())
+
+  items OrderItem[]
+
+  @@index([orderId])
+}
+
+model Order {
+  id              Int         @id @default(autoincrement())
+  tableId         Int?
+  table           Table?      @relation(fields: [tableId], references: [id])
+  orderType       OrderType   @default(DINE_IN)
+  partySize       Int
+  serverId        Int
+  server          Staff       @relation("OrderServer", fields: [serverId], references: [id])
+  status          OrderStatus @default(SEATED)
+  total           Int         @default(0)
+  currentRound    Int         @default(1)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  statusChangedAt DateTime    @default(now())
+
+  items      OrderItem[]
+  combos     OrderCombo[]
+  statusLogs OrderStatusLog[]
+
+  @@index([status])
+  @@index([tableId])
+}
+
+model OrderItem {
+  id            Int         @id @default(autoincrement())
+  orderId       Int
+  order         Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId    Int
+  menuItem      MenuItem    @relation(fields: [menuItemId], references: [id])
+  nameSnap      String
+  unitPriceSnap Int
+  quantity      Int
+  lineTotal     Int
+  ready         Boolean     @default(false)
+  served        Boolean     @default(false)
+  isTakeout     Boolean     @default(false)
+  round         Int         @default(1)
+  // Set when this item is a component of a combo bundle rather than a
+  // standalone order line — its price is absorbed into the combo's price.
+  orderComboId  Int?
+  orderCombo    OrderCombo? @relation(fields: [orderComboId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+
+  @@index([orderId])
+  @@index([menuItemId])
+  @@index([orderComboId])
+}
+
+model OrderStatusLog {
+  id          Int          @id @default(autoincrement())
+  orderId     Int
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  changedById Int
+  changedBy   Staff        @relation("StatusChangedBy", fields: [changedById], references: [id])
+  changedAt   DateTime     @default(now())
+
+  @@index([orderId])
+}
