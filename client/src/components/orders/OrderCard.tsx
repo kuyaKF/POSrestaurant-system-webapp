@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Order } from "../../types";
 import { formatCurrency, formatElapsed } from "../../lib/format";
+import { CancelOrderModal } from "./CancelOrderModal";
+
+const HOLD_TO_CANCEL_MS = 2000;
 
 function IconCheck({ className }: { className?: string }) {
   return (
@@ -23,17 +26,57 @@ function IconCheck({ className }: { className?: string }) {
 export function OrderCard({
   order,
   onMarkServed,
+  onCancel,
 }: {
   order: Order;
   onMarkServed?: (orderId: number) => void;
+  onCancel?: (orderId: number) => Promise<unknown> | void;
 }) {
   const navigate = useNavigate();
   const [, forceTick] = useState(0);
+  const [holding, setHolding] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => forceTick((t) => t + 1), 30000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+  }, []);
+
+  const startHold = () => {
+    if (cancelling) return;
+    setHolding(true);
+    holdTimer.current = setTimeout(() => {
+      setHolding(false);
+      setConfirming(true);
+    }, HOLD_TO_CANCEL_MS);
+  };
+
+  const releaseHold = () => {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+    setHolding(false);
+  };
+
+  const handleConfirmCancel = async () => {
+    setCancelling(true);
+    try {
+      await onCancel?.(order.id);
+      setConfirming(false);
+    } catch {
+      // Surfaced via the board's error banner — keep the modal open so the
+      // user can retry or back out explicitly.
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
   const servedLineCount = order.items.filter((item) => item.served).length;
@@ -93,6 +136,29 @@ export function OrderCard({
         >
           Serve Now
         </button>
+      )}
+      {order.status === "SEATED" && onCancel && (
+        <button
+          type="button"
+          className={`hold-cancel-btn ${holding ? "holding" : ""}`}
+          onPointerDown={startHold}
+          onPointerUp={releaseHold}
+          onPointerLeave={releaseHold}
+          onPointerCancel={releaseHold}
+          onContextMenu={(e) => e.preventDefault()}
+          aria-label="Press and hold for 2 seconds to cancel this order"
+        >
+          <span className="hold-cancel-fill" />
+          <span className="hold-cancel-label">Hold to Cancel</span>
+        </button>
+      )}
+      {confirming && (
+        <CancelOrderModal
+          order={order}
+          submitting={cancelling}
+          onClose={() => !cancelling && setConfirming(false)}
+          onConfirm={handleConfirmCancel}
+        />
       )}
     </div>
   );

@@ -35,3 +35,10 @@ export async function apiSend<T>(
   });
   return handleResponse<T>(res);
 }
+
+// No Content-Type header here — the browser sets multipart/form-data with
+// the correct boundary itself when the body is a FormData instance.
+export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const res = await fetch(path, { method: "POST", body: formData });
+  return handleResponse<T>(res);
+}

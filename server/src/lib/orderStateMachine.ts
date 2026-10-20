@@ -2,13 +2,16 @@ import { OrderStatus } from "@prisma/client";
 import { HttpError } from "../middleware/errorHandler";
 
 // SERVED can go forward to PAYMENT_PENDING, or back to PREPARING when the
-// table orders an additional round before asking for the bill.
+// table orders an additional round before asking for the bill. Cancelling is
+// only offered while an order is still SEATED — once the kitchen starts
+// preparing it, walking it back is no longer a clean no-op.
 export const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  SEATED: ["PREPARING"],
+  SEATED: ["PREPARING", "CANCELLED"],
   PREPARING: ["SERVED"],
   SERVED: ["PREPARING", "PAYMENT_PENDING"],
   PAYMENT_PENDING: ["PAYMENT_FULFILLED"],
   PAYMENT_FULFILLED: [],
+  CANCELLED: [],
 };
 
 export function assertTransition(current: OrderStatus, expectedFrom: OrderStatus, to: OrderStatus) {

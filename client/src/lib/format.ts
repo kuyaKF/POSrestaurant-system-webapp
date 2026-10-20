@@ -14,6 +14,15 @@ export function formatDateTime(iso: string): string {
   });
 }
 
+// `businessDate` is stored as a local-midnight timestamp, which serializes
+// to UTC — naively slicing the ISO string (e.g. "2026-08-17T16:00:00.000Z")
+// rolls back to the previous calendar day for any UTC+ timezone (including
+// Philippine Standard Time). Reconstructing it via the viewer's local time
+// zone gives back the calendar date that was actually closed.
+export function formatBusinessDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-CA");
+}
+
 export function formatElapsed(fromIso: string): string {
   const ms = Date.now() - new Date(fromIso).getTime();
   const minutes = Math.max(0, Math.floor(ms / 60000));

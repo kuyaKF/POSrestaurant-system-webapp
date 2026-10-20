@@ -1,4 +1,4 @@
-import { apiGet, apiSend } from "./client";
+import { apiGet, apiSend, apiUpload } from "./client";
 import { Category, MenuItem } from "../types";
 
 export function fetchCategories(): Promise<Category[]> {
@@ -26,4 +26,14 @@ export function updateMenuItem(id: number, input: Partial<MenuItemInput> & { isA
 
 export function deleteMenuItem(id: number): Promise<void> {
   return apiSend<void>(`/api/menu-items/${id}`, "DELETE");
+}
+
+export function uploadMenuItemImage(id: number, file: File): Promise<MenuItem> {
+  const formData = new FormData();
+  formData.append("image", file);
+  return apiUpload<MenuItem>(`/api/menu-items/${id}/image`, formData);
+}
+
+export function deleteMenuItemImage(id: number): Promise<MenuItem> {
+  return apiSend<MenuItem>(`/api/menu-items/${id}/image`, "DELETE");
 }

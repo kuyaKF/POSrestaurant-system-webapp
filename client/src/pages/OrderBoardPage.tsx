@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Order } from "../types";
-import { fetchOrders, serveReadyItems } from "../api/orders";
+import { Order, OrderStatus } from "../types";
+import { cancelOrder, fetchOrders, serveReadyItems } from "../api/orders";
 import { ApiError } from "../api/client";
 import { ORDER_STATUSES } from "../lib/color";
 import { useCurrentStaff } from "../context/CurrentStaffContext";
@@ -8,6 +8,20 @@ import { useOrderEvents } from "../hooks/useOrderEvents";
 import { Loading } from "../components/common/Loading";
 import { ErrorBanner } from "../components/common/ErrorBanner";
 import { OrderColumn } from "../components/orders/OrderColumn";
+
+// In-flight statuses are naturally bounded by how many tables/takeout
+// orders are actually being worked right now, so they're fetched in full.
+// Payment Fulfilled is a terminal state that only ever grows — fetching
+// "today's completions" instead of all-time history keeps that column (and
+// the request itself) from growing forever. See server listOrders() for the
+// hard row-count backstop that applies regardless.
+const ACTIVE_STATUSES: OrderStatus[] = ["SEATED", "PREPARING", "SERVED", "PAYMENT_PENDING"];
+
+function startOfToday(): Date {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
 
 export function OrderBoardPage() {
   const { currentStaff } = useCurrentStaff();
@@ -17,8 +31,11 @@ export function OrderBoardPage() {
 
   const load = (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
-    fetchOrders()
-      .then(setOrders)
+    Promise.all([
+      fetchOrders({ status: ACTIVE_STATUSES }),
+      fetchOrders({ status: "PAYMENT_FULFILLED", since: startOfToday() }),
+    ])
+      .then(([active, recentlyFulfilled]) => setOrders([...active, ...recentlyFulfilled]))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load orders"))
       .finally(() => {
         if (!opts?.silent) setLoading(false);
@@ -51,6 +68,21 @@ export function OrderBoardPage() {
     }
   };
 
+  const handleCancelOrder = async (orderId: number) => {
+    if (!currentStaff) {
+      setError("Select a server from the header before cancelling an order.");
+      throw new Error("no staff selected");
+    }
+    setError(null);
+    try {
+      await cancelOrder(orderId, currentStaff.id);
+      load({ silent: true });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to cancel order");
+      throw e;
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -72,6 +104,7 @@ export function OrderBoardPage() {
               status={status}
               orders={orders.filter((o) => o.status === status)}
               onMarkServed={handleMarkServed}
+              onCancel={handleCancelOrder}
             />
           ))}
         </div>

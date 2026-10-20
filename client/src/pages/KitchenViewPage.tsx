@@ -23,7 +23,7 @@ export function KitchenViewPage() {
 
   const load = (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
-    fetchOrders("PREPARING")
+    fetchOrders({ status: "PREPARING" })
       .then(setOrders)
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load orders"))
       .finally(() => {

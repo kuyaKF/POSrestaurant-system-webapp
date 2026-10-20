@@ -9,6 +9,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": "http://localhost:4100",
+      "/uploads": "http://localhost:4100",
     },
   },
 });

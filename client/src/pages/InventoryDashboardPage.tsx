@@ -1,13 +1,21 @@
 import { useEffect, useState } from "react";
 import { Category, Combo, MenuItem } from "../types";
-import { fetchCategories, fetchMenuItems, createMenuItem, updateMenuItem, deleteMenuItem, MenuItemInput } from "../api/menu";
+import {
+  fetchCategories,
+  fetchMenuItems,
+  createMenuItem,
+  updateMenuItem,
+  deleteMenuItem,
+  uploadMenuItemImage,
+  deleteMenuItemImage,
+} from "../api/menu";
 import { fetchCombos, createCombo, updateCombo, deleteCombo, ComboInput } from "../api/combos";
 import { ApiError } from "../api/client";
 import { formatCurrency } from "../lib/format";
 import { Loading } from "../components/common/Loading";
 import { ErrorBanner } from "../components/common/ErrorBanner";
 import { EmptyState } from "../components/common/EmptyState";
-import { MenuItemFormModal } from "../components/inventory/MenuItemFormModal";
+import { MenuItemFormModal, MenuItemFormSubmission } from "../components/inventory/MenuItemFormModal";
 import { ComboFormModal } from "../components/inventory/ComboFormModal";
 
 type Tab = "items" | "combos";
@@ -44,13 +52,14 @@ export function InventoryDashboardPage() {
 
   useEffect(load, []);
 
-  async function handleSaveItem(input: MenuItemInput) {
+  async function handleSaveItem({ input, imageFile, removeImage }: MenuItemFormSubmission) {
     setError(null);
     try {
-      if (editingItem) {
-        await updateMenuItem(editingItem.id, input);
-      } else {
-        await createMenuItem(input);
+      const saved = editingItem ? await updateMenuItem(editingItem.id, input) : await createMenuItem(input);
+      if (imageFile) {
+        await uploadMenuItemImage(saved.id, imageFile);
+      } else if (removeImage) {
+        await deleteMenuItemImage(saved.id);
       }
       setShowItemModal(false);
       setEditingItem(null);
@@ -174,9 +183,16 @@ export function InventoryDashboardPage() {
             {menuItems.map((item) => (
               <div className="record-card" key={item.id}>
                 <div className="record-card-header">
-                  <div>
-                    <div className="record-card-title">{item.name}</div>
-                    <div className="record-card-subtitle">{item.category.name}</div>
+                  <div className="record-card-title-row">
+                    {item.imageUrl ? (
+                      <img src={item.imageUrl} alt="" className="record-card-thumb" />
+                    ) : (
+                      <div className="record-card-thumb record-card-thumb--empty" aria-hidden="true" />
+                    )}
+                    <div>
+                      <div className="record-card-title">{item.name}</div>
+                      <div className="record-card-subtitle">{item.category.name}</div>
+                    </div>
                   </div>
                   <span
                     className={`badge record-card-badge ${item.isActive ? "badge-available" : "badge-occupied"}`}

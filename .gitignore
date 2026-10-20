@@ -10,6 +10,9 @@ build/
 server/prisma/*.db
 server/prisma/*.db-journal
 
+# uploaded media
+server/uploads/
+
 # logs
 npm-debug.log*
 *.log

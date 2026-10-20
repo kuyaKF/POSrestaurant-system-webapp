@@ -6,6 +6,7 @@ import { NewOrderPage } from "./pages/NewOrderPage";
 import { OrderDetailPage } from "./pages/OrderDetailPage";
 import { KitchenViewPage } from "./pages/KitchenViewPage";
 import { InventoryDashboardPage } from "./pages/InventoryDashboardPage";
+import { ReportsPage } from "./pages/ReportsPage";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/new-order" element={<NewOrderPage />} />
           <Route path="/kitchen" element={<KitchenViewPage />} />
           <Route path="/inventory" element={<InventoryDashboardPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
           <Route path="/orders/:id" element={<OrderDetailPage />} />
         </Routes>
       </main>

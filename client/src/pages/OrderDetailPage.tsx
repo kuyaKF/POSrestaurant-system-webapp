@@ -17,6 +17,8 @@ import { ComboSelectionModal } from "../components/orders/ComboSelectionModal";
 import { ComboPanel } from "../components/orders/ComboPanel";
 import { OrderItemsList } from "../components/orders/OrderItemsList";
 import { CategorySummary, CategoryCount } from "../components/orders/CategorySummary";
+import { DiscountPanel } from "../components/orders/DiscountPanel";
+import { VatBreakdown } from "../components/orders/VatBreakdown";
 import { StatusHistory } from "../components/orders/StatusHistory";
 import { buildMenuItemCategoryMap, sortItemsByCategory } from "../lib/categorySort";
 
@@ -35,9 +37,11 @@ export function OrderDetailPage() {
     removeItem,
     setItemServed,
     setItemTakeout,
+    setItemNotes,
     addCombo,
     removeCombo,
     setComboTakeout,
+    setDiscount,
     submit,
     reopen,
     requestPayment,
@@ -71,6 +75,7 @@ export function OrderDetailPage() {
   const servedCount = order.items.filter((item) => item.served).length;
   const canAddItems = order.status === "SEATED" || order.status === "PREPARING";
   const isFollowUpRound = order.status === "PREPARING" && order.currentRound > 1;
+  const canEditDiscount = !!staffId && order.status !== "PAYMENT_FULFILLED" && order.status !== "CANCELLED";
 
   // Combo component items render inside their own ComboPanel rather than the
   // flat item list, so split them out here.
@@ -217,6 +222,7 @@ export function OrderDetailPage() {
                 onRemove={(itemId) => removeItem(itemId)}
                 onToggleServed={(itemId, served) => staffId && setItemServed(itemId, served, staffId)}
                 onToggleTakeout={(itemId, isTakeout) => setItemTakeout(itemId, isTakeout)}
+                onSetNotes={(itemId, notes) => setItemNotes(itemId, notes)}
               />
               {currentRoundCombos.map((combo) => (
                 <ComboPanel
@@ -232,6 +238,8 @@ export function OrderDetailPage() {
                 />
               ))}
               <CategorySummary breakdown={orderCategoryBreakdown} />
+              <DiscountPanel order={order} editable={canEditDiscount} disabled={mutating} onSetDiscount={setDiscount} />
+              <VatBreakdown order={order} />
               <div className="cart-total-row">
                 <span>
                   Order Total <span className="cart-total-count">({totalItemCount} item{totalItemCount === 1 ? "" : "s"})</span>
@@ -264,6 +272,8 @@ export function OrderDetailPage() {
             <ComboPanel key={combo.id} combo={combo} items={comboItemsFor(combo.id)} />
           ))}
           <CategorySummary breakdown={orderCategoryBreakdown} />
+          <DiscountPanel order={order} editable={canEditDiscount} disabled={mutating} onSetDiscount={setDiscount} />
+          <VatBreakdown order={order} />
           <div className="cart-total-row">
             <span>
               Total <span className="cart-total-count">({totalItemCount} item{totalItemCount === 1 ? "" : "s"})</span>

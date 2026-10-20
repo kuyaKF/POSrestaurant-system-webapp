@@ -7,10 +7,12 @@ export function OrderColumn({
   status,
   orders,
   onMarkServed,
+  onCancel,
 }: {
   status: OrderStatus;
   orders: Order[];
   onMarkServed?: (orderId: number) => void;
+  onCancel?: (orderId: number) => Promise<unknown> | void;
 }) {
   const meta = statusMeta(status);
   return (
@@ -24,7 +26,9 @@ export function OrderColumn({
         {orders.length === 0 ? (
           <EmptyState message="No orders" />
         ) : (
-          orders.map((order) => <OrderCard key={order.id} order={order} onMarkServed={onMarkServed} />)
+          orders.map((order) => (
+            <OrderCard key={order.id} order={order} onMarkServed={onMarkServed} onCancel={onCancel} />
+          ))
         )}
       </div>
     </div>

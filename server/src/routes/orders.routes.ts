@@ -3,6 +3,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import {
   addOrderCombo,
   addOrderItem,
+  cancelOrder,
   completePayment,
   createOrder,
   getOrder,
@@ -13,6 +14,8 @@ import {
   requestPayment,
   serveReadyItems,
   setOrderComboTakeout,
+  setOrderDiscount,
+  setOrderItemNotes,
   setOrderItemReady,
   setOrderItemServed,
   setOrderItemTakeout,
@@ -31,10 +34,13 @@ ordersRouter.delete("/:id/items/:itemId", asyncHandler(removeOrderItem));
 ordersRouter.patch("/:id/items/:itemId/ready", asyncHandler(setOrderItemReady));
 ordersRouter.patch("/:id/items/:itemId/served", asyncHandler(setOrderItemServed));
 ordersRouter.patch("/:id/items/:itemId/takeout", asyncHandler(setOrderItemTakeout));
+ordersRouter.patch("/:id/items/:itemId/notes", asyncHandler(setOrderItemNotes));
 ordersRouter.post("/:id/combos", asyncHandler(addOrderCombo));
 ordersRouter.delete("/:id/combos/:comboInstanceId", asyncHandler(removeOrderCombo));
 ordersRouter.patch("/:id/combos/:comboInstanceId/takeout", asyncHandler(setOrderComboTakeout));
+ordersRouter.patch("/:id/discount", asyncHandler(setOrderDiscount));
 ordersRouter.post("/:id/submit", asyncHandler(submitOrder));
+ordersRouter.post("/:id/cancel", asyncHandler(cancelOrder));
 ordersRouter.post("/:id/serve-ready-items", asyncHandler(serveReadyItems));
 ordersRouter.post("/:id/reopen", asyncHandler(reopenOrder));
 ordersRouter.post("/:id/request-payment", asyncHandler(requestPayment));

@@ -36,6 +36,7 @@ export interface MenuItem {
   categoryId: number;
   category: Category;
   isActive: boolean;
+  imageUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -61,9 +62,17 @@ export interface Combo {
   slots: ComboSlot[];
 }
 
-export type OrderStatus = "SEATED" | "PREPARING" | "SERVED" | "PAYMENT_PENDING" | "PAYMENT_FULFILLED";
+export type OrderStatus =
+  | "SEATED"
+  | "PREPARING"
+  | "SERVED"
+  | "PAYMENT_PENDING"
+  | "PAYMENT_FULFILLED"
+  | "CANCELLED";
 
 export type OrderType = "DINE_IN" | "TAKEOUT";
+
+export type DiscountType = "SENIOR" | "PWD";
 
 export interface OrderItem {
   id: number;
@@ -77,6 +86,7 @@ export interface OrderItem {
   served: boolean;
   isTakeout: boolean;
   round: number;
+  notes: string | null;
   orderComboId: number | null;
   createdAt: string;
 }
@@ -113,10 +123,38 @@ export interface Order {
   status: OrderStatus;
   total: number;
   currentRound: number;
+  discountType: DiscountType | null;
+  discountIdNumber: string | null;
+  discountName: string | null;
+  discountAmount: number;
+  vatableSales: number;
+  vatExemptSales: number;
+  vatAmount: number;
   createdAt: string;
   updatedAt: string;
   statusChangedAt: string;
   items: OrderItem[];
   combos: OrderCombo[];
   statusLogs: OrderStatusLog[];
+}
+
+export type ReadingType = "X" | "Z";
+
+export interface DailyReading {
+  id: number;
+  type: ReadingType;
+  businessDate: string;
+  periodStart: string;
+  periodEnd: string;
+  grossSales: number;
+  vatableSales: number;
+  vatAmount: number;
+  vatExemptSales: number;
+  discountTotal: number;
+  netSales: number;
+  transactionCount: number;
+  cancelledCount: number;
+  generatedById: number;
+  generatedBy: Pick<Staff, "id" | "name" | "role">;
+  createdAt: string;
 }

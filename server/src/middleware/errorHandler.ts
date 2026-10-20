@@ -1,6 +1,7 @@
 import { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
+import multer from "multer";
 
 export class HttpError extends Error {
   status: number;
@@ -18,6 +19,12 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 
   if (err instanceof ZodError) {
     res.status(400).json({ error: "Invalid request", details: err.flatten() });
+    return;
+  }
+
+  if (err instanceof multer.MulterError) {
+    const message = err.code === "LIMIT_FILE_SIZE" ? "Image must be 5MB or smaller" : err.message;
+    res.status(400).json({ error: message });
     return;
   }
 

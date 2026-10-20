@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { HttpError } from "../middleware/errorHandler";
+import { deleteUploadedImage } from "../middleware/upload";
 
 const listMenuItemsQuerySchema = z.object({
   categoryId: z.coerce.number().int().positive().optional(),
@@ -71,5 +72,43 @@ export async function deleteMenuItem(req: Request, res: Response) {
   if (!existing) throw new HttpError(404, "Menu item not found");
 
   await prisma.menuItem.delete({ where: { id } });
+  if (existing.imageUrl) deleteUploadedImage(existing.imageUrl);
   res.status(204).send();
+}
+
+export async function uploadMenuItemImage(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const file = req.file;
+  if (!file) throw new HttpError(400, "No image file was uploaded");
+
+  const existing = await prisma.menuItem.findUnique({ where: { id } });
+  if (!existing) {
+    deleteUploadedImage(`/uploads/menu-items/${file.filename}`);
+    throw new HttpError(404, "Menu item not found");
+  }
+
+  const imageUrl = `/uploads/menu-items/${file.filename}`;
+  const menuItem = await prisma.menuItem.update({
+    where: { id },
+    data: { imageUrl },
+    include: { category: true },
+  });
+
+  if (existing.imageUrl) deleteUploadedImage(existing.imageUrl);
+  res.json(menuItem);
+}
+
+export async function deleteMenuItemImage(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const existing = await prisma.menuItem.findUnique({ where: { id } });
+  if (!existing) throw new HttpError(404, "Menu item not found");
+
+  const menuItem = await prisma.menuItem.update({
+    where: { id },
+    data: { imageUrl: null },
+    include: { category: true },
+  });
+
+  if (existing.imageUrl) deleteUploadedImage(existing.imageUrl);
+  res.json(menuItem);
 }

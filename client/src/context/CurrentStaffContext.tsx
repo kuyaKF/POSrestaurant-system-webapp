@@ -1,13 +1,16 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { Staff } from "../types";
-import { fetchStaff } from "../api/staff";
+import { fetchStaff, loginStaff } from "../api/staff";
+import { ApiError } from "../api/client";
 
 const STORAGE_KEY = "pos_current_staff_id";
 
 interface CurrentStaffContextValue {
   staff: Staff[];
   currentStaff: Staff | null;
-  setCurrentStaffId: (id: number) => void;
+  // Verifies the PIN against the server before committing the switch —
+  // returns an error message on failure, or null on success.
+  verifyAndSwitch: (staffId: number, pin: string) => Promise<string | null>;
   loading: boolean;
   refreshStaff: () => void;
 }
@@ -30,9 +33,15 @@ export function CurrentStaffProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, [refreshToken]);
 
-  const setCurrentStaffId = (id: number) => {
-    setCurrentStaffIdState(id);
-    localStorage.setItem(STORAGE_KEY, String(id));
+  const verifyAndSwitch = async (staffId: number, pin: string): Promise<string | null> => {
+    try {
+      await loginStaff(staffId, pin);
+      setCurrentStaffIdState(staffId);
+      localStorage.setItem(STORAGE_KEY, String(staffId));
+      return null;
+    } catch (e) {
+      return e instanceof ApiError ? e.message : "Failed to verify PIN";
+    }
   };
 
   const currentStaff = useMemo(
@@ -43,7 +52,7 @@ export function CurrentStaffProvider({ children }: { children: ReactNode }) {
   const value: CurrentStaffContextValue = {
     staff,
     currentStaff,
-    setCurrentStaffId,
+    verifyAndSwitch,
     loading,
     refreshStaff: () => setRefreshToken((t) => t + 1),
   };

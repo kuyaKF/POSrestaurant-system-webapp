@@ -1,9 +1,15 @@
 import { apiGet, apiSend } from "./client";
-import { Order, OrderStatus } from "../types";
+import { DiscountType, Order, OrderStatus } from "../types";
 
-export function fetchOrders(status?: OrderStatus): Promise<Order[]> {
-  const query = status ? `?status=${status}` : "";
-  return apiGet<Order[]>(`/api/orders${query}`);
+export function fetchOrders(opts?: { status?: OrderStatus | OrderStatus[]; since?: Date }): Promise<Order[]> {
+  const params = new URLSearchParams();
+  if (opts?.status) {
+    const statuses = Array.isArray(opts.status) ? opts.status : [opts.status];
+    params.set("status", statuses.join(","));
+  }
+  if (opts?.since) params.set("since", opts.since.toISOString());
+  const query = params.toString();
+  return apiGet<Order[]>(`/api/orders${query ? `?${query}` : ""}`);
 }
 
 export function fetchOrder(id: number): Promise<Order> {
@@ -18,12 +24,19 @@ export function createOrder(input: CreateOrderInput): Promise<Order> {
   return apiSend<Order>("/api/orders", "POST", input);
 }
 
-export function addOrderItem(orderId: number, input: { menuItemId: number; quantity: number }): Promise<Order> {
+export function addOrderItem(
+  orderId: number,
+  input: { menuItemId: number; quantity: number; notes?: string | null }
+): Promise<Order> {
   return apiSend<Order>(`/api/orders/${orderId}/items`, "POST", input);
 }
 
 export function updateOrderItem(orderId: number, itemId: number, quantity: number): Promise<Order> {
   return apiSend<Order>(`/api/orders/${orderId}/items/${itemId}`, "PATCH", { quantity });
+}
+
+export function setOrderItemNotes(orderId: number, itemId: number, notes: string | null): Promise<Order> {
+  return apiSend<Order>(`/api/orders/${orderId}/items/${itemId}/notes`, "PATCH", { notes });
 }
 
 export function removeOrderItem(orderId: number, itemId: number): Promise<Order> {
@@ -62,8 +75,19 @@ export function setOrderComboTakeout(orderId: number, comboInstanceId: number, i
   return apiSend<Order>(`/api/orders/${orderId}/combos/${comboInstanceId}/takeout`, "PATCH", { isTakeout });
 }
 
+export function setOrderDiscount(
+  orderId: number,
+  input: { discountType: DiscountType | null; idNumber?: string | null; name?: string | null }
+): Promise<Order> {
+  return apiSend<Order>(`/api/orders/${orderId}/discount`, "PATCH", input);
+}
+
 export function submitOrder(orderId: number, staffId: number): Promise<Order> {
   return apiSend<Order>(`/api/orders/${orderId}/submit`, "POST", { staffId });
+}
+
+export function cancelOrder(orderId: number, staffId: number): Promise<Order> {
+  return apiSend<Order>(`/api/orders/${orderId}/cancel`, "POST", { staffId });
 }
 
 export function serveReadyItems(orderId: number, staffId: number): Promise<Order> {

@@ -1,5 +1,7 @@
-import { StaffRole } from "../../types";
+import { useState } from "react";
+import { Staff, StaffRole } from "../../types";
 import { useCurrentStaff } from "../../context/CurrentStaffContext";
+import { PinConfirmModal } from "./PinConfirmModal";
 
 const ROLE_LABEL: Record<StaffRole, string> = {
   MANAGER: "Manager",
@@ -8,7 +10,8 @@ const ROLE_LABEL: Record<StaffRole, string> = {
 };
 
 export function StaffSelector() {
-  const { staff, currentStaff, setCurrentStaffId, loading } = useCurrentStaff();
+  const { staff, currentStaff, loading } = useCurrentStaff();
+  const [pendingStaff, setPendingStaff] = useState<Staff | null>(null);
 
   return (
     <div className="staff-selector">
@@ -18,7 +21,10 @@ export function StaffSelector() {
         className="select"
         value={currentStaff?.id ?? ""}
         disabled={loading || staff.length === 0}
-        onChange={(e) => setCurrentStaffId(Number(e.target.value))}
+        onChange={(e) => {
+          const next = staff.find((s) => s.id === Number(e.target.value));
+          if (next) setPendingStaff(next);
+        }}
       >
         <option value="" disabled>
           {loading ? "Loading…" : "Select staff"}
@@ -29,6 +35,14 @@ export function StaffSelector() {
           </option>
         ))}
       </select>
+
+      {pendingStaff && (
+        <PinConfirmModal
+          staff={pendingStaff}
+          onClose={() => setPendingStaff(null)}
+          onSuccess={() => setPendingStaff(null)}
+        />
+      )}
     </div>
   );
 }

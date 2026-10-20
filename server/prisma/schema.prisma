@@ -19,6 +19,7 @@ enum OrderStatus {
   SERVED
   PAYMENT_PENDING
   PAYMENT_FULFILLED
+  CANCELLED
 }
 
 enum OrderType {
@@ -26,15 +27,31 @@ enum OrderType {
   TAKEOUT
 }
 
+// RA 9994 (Senior Citizen) / RA 10754 (PWD) — 20% discount and VAT
+// exemption on the qualified purchase.
+enum DiscountType {
+  SENIOR
+  PWD
+}
+
+enum ReadingType {
+  X
+  Z
+}
+
 model Staff {
   id        Int       @id @default(autoincrement())
   name      String
   role      StaffRole
   isActive  Boolean   @default(true)
+  // salt:hash (scrypt) — null means login is disabled for this staff until a
+  // PIN is set. Never selected into API responses that reach the client.
+  pinHash   String?
   createdAt DateTime  @default(now())
 
-  ordersSeated Order[]          @relation("OrderServer")
-  statusLogs   OrderStatusLog[] @relation("StatusChangedBy")
+  ordersSeated   Order[]          @relation("OrderServer")
+  statusLogs     OrderStatusLog[] @relation("StatusChangedBy")
+  dailyReadings  DailyReading[]
 }
 
 model Table {
@@ -64,6 +81,9 @@ model MenuItem {
   categoryId Int
   category   Category @relation(fields: [categoryId], references: [id])
   isActive   Boolean  @default(true)
+  // Relative URL under /uploads, e.g. "/uploads/menu-items/<file>" — set via
+  // the dedicated image upload endpoint, not the plain create/update JSON.
+  imageUrl   String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -131,6 +151,18 @@ model Order {
   status          OrderStatus @default(SEATED)
   total           Int         @default(0)
   currentRound    Int         @default(1)
+
+  // Senior Citizen / PWD discount, applied to the whole order. VAT/discount
+  // snapshot fields are recomputed alongside `total` any time items, combos,
+  // or the discount itself change — see recomputeOrderTotal().
+  discountType     DiscountType?
+  discountIdNumber String?
+  discountName     String?
+  discountAmount   Int           @default(0)
+  vatableSales     Int           @default(0)
+  vatExemptSales   Int           @default(0)
+  vatAmount        Int           @default(0)
+
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   statusChangedAt DateTime    @default(now())
@@ -141,6 +173,7 @@ model Order {
 
   @@index([status])
   @@index([tableId])
+  @@index([statusChangedAt])
 }
 
 model OrderItem {
@@ -157,6 +190,8 @@ model OrderItem {
   served        Boolean     @default(false)
   isTakeout     Boolean     @default(false)
   round         Int         @default(1)
+  // Free-text kitchen/prep instructions from the server, e.g. "no ice".
+  notes         String?
   // Set when this item is a component of a combo bundle rather than a
   // standalone order line — its price is absorbed into the combo's price.
   orderComboId  Int?
@@ -179,4 +214,28 @@ model OrderStatusLog {
   changedAt   DateTime     @default(now())
 
   @@index([orderId])
+}
+
+// A persisted X- or Z-reading snapshot. X is repeatable/informational; Z is
+// a formal once-per-business-day close (enforced in the controller, not
+// here — SQLite can't express a partial unique index cleanly).
+model DailyReading {
+  id               Int         @id @default(autoincrement())
+  type             ReadingType
+  businessDate     DateTime
+  periodStart      DateTime
+  periodEnd        DateTime
+  grossSales       Int
+  vatableSales     Int
+  vatAmount        Int
+  vatExemptSales   Int
+  discountTotal    Int
+  netSales         Int
+  transactionCount Int
+  cancelledCount   Int
+  generatedById    Int
+  generatedBy      Staff       @relation(fields: [generatedById], references: [id])
+  createdAt        DateTime    @default(now())
+
+  @@index([businessDate])
 }

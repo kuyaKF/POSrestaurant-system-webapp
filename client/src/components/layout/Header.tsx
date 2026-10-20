@@ -1,7 +1,12 @@
 import { NavLink } from "react-router-dom";
+import { useCurrentStaff } from "../../context/CurrentStaffContext";
 import { StaffSelector } from "./StaffSelector";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Header() {
+  const { currentStaff } = useCurrentStaff();
+  const canSeeReports = !!currentStaff && currentStaff.role !== "KITCHEN";
+
   return (
     <header className="app-header">
       <span className="app-title">Restaurant POS</span>
@@ -18,8 +23,16 @@ export function Header() {
         <NavLink to="/inventory" className={({ isActive }) => (isActive ? "active" : "")}>
           Inventory
         </NavLink>
+        {canSeeReports && (
+          <NavLink to="/reports" className={({ isActive }) => (isActive ? "active" : "")}>
+            Reports
+          </NavLink>
+        )}
       </nav>
-      <StaffSelector />
+      <div className="app-header-actions">
+        <ThemeToggle />
+        <StaffSelector />
+      </div>
     </header>
   );
 }

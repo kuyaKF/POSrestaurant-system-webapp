@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { z } from "zod";
-import { Prisma, OrderStatus } from "@prisma/client";
+import { Prisma, OrderStatus, DiscountType } from "@prisma/client";
 import { prisma } from "../db";
 import { HttpError } from "../middleware/errorHandler";
 import { assertItemMutable, assertItemsAddable, assertOrderPreparing } from "../lib/orderStateMachine";
@@ -21,13 +21,26 @@ const createOrderSchema = z.discriminatedUnion("orderType", [
   }),
 ]);
 
+const notesSchema = z
+  .string()
+  .trim()
+  .max(200)
+  .nullable()
+  .optional()
+  .transform((v) => (v ? v : null));
+
 const addItemSchema = z.object({
   menuItemId: z.coerce.number().int().positive(),
   quantity: z.coerce.number().int().positive(),
+  notes: notesSchema,
 });
 
 const updateItemSchema = z.object({
   quantity: z.coerce.number().int().nonnegative(),
+});
+
+const setItemNotesSchema = z.object({
+  notes: notesSchema,
 });
 
 const setItemReadySchema = z.object({
@@ -63,22 +76,73 @@ const transitionBodySchema = z.object({
   staffId: z.coerce.number().int().positive(),
 });
 
+// `status` accepts a comma-separated list (e.g. "SEATED,PREPARING") so the
+// board can fetch its active-pipeline columns in one request; `since`
+// bounds terminal-state queries (e.g. Payment Fulfilled) to a recent
+// window instead of the order's entire history.
 const listOrdersQuerySchema = z.object({
-  status: z.nativeEnum(OrderStatus).optional(),
+  status: z.preprocess(
+    (v) => (typeof v === "string" ? v.split(",") : v),
+    z.array(z.nativeEnum(OrderStatus)).optional()
+  ),
+  since: z.coerce.date().optional(),
 });
 
+// Hard backstops so a single request can never return an unbounded number
+// of orders, independent of whatever date/status filtering the caller used —
+// e.g. an unusually high-volume day still caps at RECENT_ORDERS_LIMIT rather
+// than however many orders were actually fulfilled that day.
+const RECENT_ORDERS_LIMIT = 50;
+const ORDERS_QUERY_LIMIT = 200;
+
+const setDiscountSchema = z
+  .object({
+    discountType: z.nativeEnum(DiscountType).nullable(),
+    idNumber: z.string().trim().min(1).max(50).nullable().optional(),
+    name: z.string().trim().min(1).max(100).nullable().optional(),
+  })
+  .refine((data) => data.discountType === null || (data.idNumber && data.name), {
+    message: "An ID number and name are required to apply a discount",
+  });
+
+const VAT_RATE = 0.12;
+const SENIOR_PWD_DISCOUNT_RATE = 0.2;
+
+// Menu prices are VAT-inclusive (as required by PH law). A Senior/PWD
+// discount makes the whole order VAT-exempt and takes 20% off the
+// VAT-exclusive base — the standard BIR computation. Without a discount, the
+// order just reports its VATable/VAT split for the receipt.
 async function recomputeOrderTotal(tx: Prisma.TransactionClient, orderId: number) {
-  const [items, combos] = await Promise.all([
+  const [items, combos, order] = await Promise.all([
     tx.orderItem.findMany({ where: { orderId } }),
     tx.orderCombo.findMany({ where: { orderId } }),
+    tx.order.findUniqueOrThrow({ where: { id: orderId } }),
   ]);
   // Combo component items carry a $0 price snapshot — their cost is folded
   // into the combo's own discounted price instead, so it isn't double-counted.
   const itemsTotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
   const combosTotal = combos.reduce((sum, combo) => sum + combo.priceSnap, 0);
+  const subtotal = itemsTotal + combosTotal;
+
+  let vatableSales = 0;
+  let vatExemptSales = 0;
+  let vatAmount = 0;
+  let discountAmount = 0;
+  let total = subtotal;
+
+  if (order.discountType) {
+    vatExemptSales = Math.round(subtotal / (1 + VAT_RATE));
+    discountAmount = Math.round(vatExemptSales * SENIOR_PWD_DISCOUNT_RATE);
+    total = vatExemptSales - discountAmount;
+  } else {
+    vatableSales = Math.round(subtotal / (1 + VAT_RATE));
+    vatAmount = subtotal - vatableSales;
+    total = subtotal;
+  }
+
   return tx.order.update({
     where: { id: orderId },
-    data: { total: itemsTotal + combosTotal },
+    data: { total, vatableSales, vatExemptSales, vatAmount, discountAmount },
     include: ORDER_INCLUDE,
   });
 }
@@ -143,11 +207,18 @@ export async function createOrder(req: Request, res: Response) {
 }
 
 export async function listOrders(req: Request, res: Response) {
-  const { status } = listOrdersQuerySchema.parse(req.query);
+  const { status, since } = listOrdersQuerySchema.parse(req.query);
   const orders = await prisma.order.findMany({
-    where: status ? { status } : undefined,
+    where: {
+      ...(status ? { status: { in: status } } : {}),
+      ...(since ? { statusChangedAt: { gte: since } } : {}),
+    },
     include: ORDER_INCLUDE,
-    orderBy: { createdAt: "desc" },
+    // `since` implies "recent completed orders" — sort by when they actually
+    // finished rather than when they were opened, and cap tighter since this
+    // is meant as a glance view, not full history.
+    orderBy: since ? { statusChangedAt: "desc" } : { createdAt: "desc" },
+    take: since ? RECENT_ORDERS_LIMIT : ORDERS_QUERY_LIMIT,
   });
   res.json(orders);
 }
@@ -161,7 +232,7 @@ export async function getOrder(req: Request, res: Response) {
 
 export async function addOrderItem(req: Request, res: Response) {
   const orderId = Number(req.params.id);
-  const { menuItemId, quantity } = addItemSchema.parse(req.body);
+  const { menuItemId, quantity, notes } = addItemSchema.parse(req.body);
 
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) throw new HttpError(404, "Order not found");
@@ -172,11 +243,20 @@ export async function addOrderItem(req: Request, res: Response) {
 
   const updated = await prisma.$transaction(async (tx) => {
     // Only fold into a standalone line that hasn't started prep or been
-    // served yet, in the current round — merging into a ready/served line
-    // would silently mark this follow-up as already prepared or delivered,
+    // served yet, in the current round, with the same notes — merging into a
+    // ready/served line would silently mark this follow-up as already
+    // prepared or delivered, merging differing notes would lose one of them,
     // and combo component lines are never a merge target.
     const existing = await tx.orderItem.findFirst({
-      where: { orderId, menuItemId, ready: false, served: false, orderComboId: null, round: order.currentRound },
+      where: {
+        orderId,
+        menuItemId,
+        ready: false,
+        served: false,
+        orderComboId: null,
+        round: order.currentRound,
+        notes,
+      },
     });
     if (existing) {
       const newQuantity = existing.quantity + quantity;
@@ -194,6 +274,7 @@ export async function addOrderItem(req: Request, res: Response) {
           quantity,
           lineTotal: menuItem.price * quantity,
           round: order.currentRound,
+          notes,
         },
       });
     }
@@ -202,6 +283,28 @@ export async function addOrderItem(req: Request, res: Response) {
 
   emitOrdersChanged();
   res.status(201).json(updated);
+}
+
+export async function setOrderItemNotes(req: Request, res: Response) {
+  const orderId = Number(req.params.id);
+  const itemId = Number(req.params.itemId);
+  const { notes } = setItemNotesSchema.parse(req.body);
+
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order) throw new HttpError(404, "Order not found");
+
+  const orderItem = await prisma.orderItem.findFirst({ where: { id: itemId, orderId } });
+  if (!orderItem) throw new HttpError(404, "Order item not found");
+  if (orderItem.orderComboId !== null) {
+    throw new HttpError(409, "This item is part of a combo — remove the whole combo instead");
+  }
+  assertItemMutable(order.status, orderItem.ready || orderItem.served);
+
+  await prisma.orderItem.update({ where: { id: itemId }, data: { notes } });
+
+  emitOrdersChanged();
+  const updated = await prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: ORDER_INCLUDE });
+  res.json(updated);
 }
 
 export async function updateOrderItem(req: Request, res: Response) {
@@ -504,6 +607,35 @@ export async function setOrderComboTakeout(req: Request, res: Response) {
   res.json(updated);
 }
 
+// Any active staff member can apply this — in practice the server just
+// checks the presented ID, no manager override required. Blocked once the
+// order is closed out (paid or cancelled) since the receipt is already final.
+export async function setOrderDiscount(req: Request, res: Response) {
+  const orderId = Number(req.params.id);
+  const { discountType, idNumber, name } = setDiscountSchema.parse(req.body);
+
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order) throw new HttpError(404, "Order not found");
+  if (order.status === "PAYMENT_FULFILLED" || order.status === "CANCELLED") {
+    throw new HttpError(409, "Cannot change the discount on a closed order");
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        discountType,
+        discountIdNumber: discountType ? idNumber : null,
+        discountName: discountType ? name : null,
+      },
+    });
+    return recomputeOrderTotal(tx, orderId);
+  });
+
+  emitOrdersChanged();
+  res.json(updated);
+}
+
 export async function submitOrder(req: Request, res: Response) {
   const orderId = Number(req.params.id);
   const { staffId } = transitionBodySchema.parse(req.body);
@@ -513,6 +645,13 @@ export async function submitOrder(req: Request, res: Response) {
   if (order.items.length === 0) throw new HttpError(400, "Cannot submit an order with no items");
 
   const updated = await transitionOrder(orderId, "SEATED", "PREPARING", staffId);
+  res.json(updated);
+}
+
+export async function cancelOrder(req: Request, res: Response) {
+  const orderId = Number(req.params.id);
+  const { staffId } = transitionBodySchema.parse(req.body);
+  const updated = await transitionOrder(orderId, "SEATED", "CANCELLED", staffId);
   res.json(updated);
 }
 

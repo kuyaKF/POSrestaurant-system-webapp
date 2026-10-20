@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Order } from "../types";
+import { DiscountType, Order } from "../types";
 import * as ordersApi from "../api/orders";
 import { ApiError } from "../api/client";
 import { useOrderEvents } from "./useOrderEvents";
@@ -48,10 +48,12 @@ export function useOrder(orderId: number) {
     error,
     mutating,
     reload: load,
-    addItem: (menuItemId: number, quantity = 1) =>
-      runMutation(() => ordersApi.addOrderItem(orderId, { menuItemId, quantity })),
+    addItem: (menuItemId: number, quantity = 1, notes?: string | null) =>
+      runMutation(() => ordersApi.addOrderItem(orderId, { menuItemId, quantity, notes })),
     setItemQuantity: (itemId: number, quantity: number) =>
       runMutation(() => ordersApi.updateOrderItem(orderId, itemId, quantity)),
+    setItemNotes: (itemId: number, notes: string | null) =>
+      runMutation(() => ordersApi.setOrderItemNotes(orderId, itemId, notes)),
     removeItem: (itemId: number) => runMutation(() => ordersApi.removeOrderItem(orderId, itemId)),
     setItemReady: (itemId: number, ready: boolean) =>
       runMutation(() => ordersApi.setOrderItemReady(orderId, itemId, ready)),
@@ -64,6 +66,8 @@ export function useOrder(orderId: number) {
     removeCombo: (comboInstanceId: number) => runMutation(() => ordersApi.removeOrderCombo(orderId, comboInstanceId)),
     setComboTakeout: (comboInstanceId: number, isTakeout: boolean) =>
       runMutation(() => ordersApi.setOrderComboTakeout(orderId, comboInstanceId, isTakeout)),
+    setDiscount: (input: { discountType: DiscountType | null; idNumber?: string | null; name?: string | null }) =>
+      runMutation(() => ordersApi.setOrderDiscount(orderId, input)),
     submit: (staffId: number) => runMutation(() => ordersApi.submitOrder(orderId, staffId)),
     serveReadyItems: (staffId: number) => runMutation(() => ordersApi.serveReadyItems(orderId, staffId)),
     reopen: (staffId: number) => runMutation(() => ordersApi.reopenOrder(orderId, staffId)),

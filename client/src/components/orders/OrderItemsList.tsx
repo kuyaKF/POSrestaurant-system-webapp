@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { OrderItem } from "../../types";
 import { formatCurrency } from "../../lib/format";
 import { IconTrash } from "./icons";
@@ -14,6 +15,7 @@ export function OrderItemsList({
   onToggleReady,
   onToggleServed,
   onToggleTakeout,
+  onSetNotes,
 }: {
   items: OrderItem[];
   editable?: boolean;
@@ -26,7 +28,10 @@ export function OrderItemsList({
   onToggleReady?: (itemId: number, ready: boolean) => void;
   onToggleServed?: (itemId: number, served: boolean) => void;
   onToggleTakeout?: (itemId: number, isTakeout: boolean) => void;
+  onSetNotes?: (itemId: number, notes: string | null) => void;
 }) {
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+
   if (items.length === 0) {
     return <p className="order-items-empty">No items added yet.</p>;
   }
@@ -37,7 +42,9 @@ export function OrderItemsList({
         const locked = item.ready || item.served;
         const canEditItem = editable && !locked;
         const canToggleTakeout = takeoutEditable && canEditItem;
+        const canEditNotes = canEditItem && !!onSetNotes;
         const showItemStatus = readyEditable || servedEditable || locked;
+        const isEditingNotes = editingNoteId === item.id;
 
         return (
           <div
@@ -60,6 +67,39 @@ export function OrderItemsList({
                 item.isTakeout && <span className="takeout-badge active">Takeout</span>
               )}
             </div>
+
+            {(item.notes || canEditNotes) && (
+              <div className="cart-line-note-row">
+                {isEditingNotes ? (
+                  <textarea
+                    className="textarea cart-line-note-input"
+                    defaultValue={item.notes ?? ""}
+                    placeholder="e.g. no ice"
+                    autoFocus
+                    onBlur={(e) => {
+                      const value = e.target.value.trim();
+                      if (value !== (item.notes ?? "")) {
+                        onSetNotes?.(item.id, value || null);
+                      }
+                      setEditingNoteId(null);
+                    }}
+                  />
+                ) : item.notes ? (
+                  <button
+                    type="button"
+                    className={`cart-line-note ${canEditNotes ? "cart-line-note--editable" : ""}`}
+                    disabled={!canEditNotes}
+                    onClick={() => canEditNotes && setEditingNoteId(item.id)}
+                  >
+                    📝 {item.notes}
+                  </button>
+                ) : (
+                  <button type="button" className="cart-line-note-toggle" onClick={() => setEditingNoteId(item.id)}>
+                    + Add note
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="cart-line-footer">
               {!hidePricing && (

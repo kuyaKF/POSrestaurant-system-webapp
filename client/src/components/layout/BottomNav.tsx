@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
-import { IconBoard, IconInventory, IconKitchen, IconNewOrder } from "./icons";
+import { useCurrentStaff } from "../../context/CurrentStaffContext";
+import { IconBoard, IconInventory, IconKitchen, IconNewOrder, IconReports } from "./icons";
 
 const TABS = [
   { to: "/", label: "Board", Icon: IconBoard, end: true },
@@ -8,10 +9,15 @@ const TABS = [
   { to: "/inventory", label: "Inventory", Icon: IconInventory, end: false },
 ];
 
+const REPORTS_TAB = { to: "/reports", label: "Reports", Icon: IconReports, end: false };
+
 export function BottomNav() {
+  const { currentStaff } = useCurrentStaff();
+  const tabs = currentStaff && currentStaff.role !== "KITCHEN" ? [...TABS, REPORTS_TAB] : TABS;
+
   return (
     <nav className="bottom-nav">
-      {TABS.map(({ to, label, Icon, end }) => (
+      {tabs.map(({ to, label, Icon, end }) => (
         <NavLink
           key={to}
           to={to}

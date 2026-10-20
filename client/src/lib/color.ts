@@ -22,6 +22,7 @@ const STATUS_META: Record<OrderStatus, StatusMeta> = {
   SERVED: { label: "Served", color: "#3b82f6" },
   PAYMENT_PENDING: { label: "Payment Pending", color: "#eab308" },
   PAYMENT_FULFILLED: { label: "Payment Fulfilled", color: "#16a34a" },
+  CANCELLED: { label: "Cancelled", color: "#dc2626" },
 };
 
 export function statusMeta(status: OrderStatus): StatusMeta {

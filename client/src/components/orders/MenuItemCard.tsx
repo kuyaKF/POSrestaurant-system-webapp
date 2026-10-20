@@ -13,7 +13,10 @@ export function MenuItemCard({
 }) {
   return (
     <button type="button" className="item-card menu-item-card" onClick={onClick} disabled={disabled}>
-      <div className="menu-item-card-top">
+      <div
+        className={`menu-item-card-top ${menuItem.imageUrl ? "menu-item-card-top--image" : ""}`}
+        style={menuItem.imageUrl ? { backgroundImage: `url(${menuItem.imageUrl})` } : undefined}
+      >
         <span
           className="item-card-price-badge"
           style={{

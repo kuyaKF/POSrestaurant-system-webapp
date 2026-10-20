@@ -9,7 +9,7 @@ const ORDER_INCLUDE = {
   server: true,
   items: true,
   combos: true,
-  statusLogs: { orderBy: { changedAt: "asc" as const } },
+  statusLogs: { orderBy: { changedAt: "asc" as const }, include: { changedBy: true } },
 };
 
 export async function transitionOrder(
@@ -47,7 +47,7 @@ export async function transitionOrder(
       },
     });
 
-    if (toStatus === "PAYMENT_FULFILLED" && order.tableId !== null) {
+    if ((toStatus === "PAYMENT_FULFILLED" || toStatus === "CANCELLED") && order.tableId !== null) {
       await tx.table.update({ where: { id: order.tableId }, data: { isOccupied: false } });
     }
 
